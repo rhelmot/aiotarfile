@@ -10,6 +10,7 @@ use wr::TarfileWr;
 
 #[pyclass]
 #[derive(Copy, Clone)]
+/// An enum for supported types of tar compression.
 enum CompressionType {
     Clear,
     Gzip,
@@ -26,11 +27,12 @@ mod rd;
 mod wr;
 
 #[pyfunction]
+#[pyo3(signature = (fp, compression = CompressionType::Clear))]
 /// Open a tar file for reading.
 ///
 /// This function takes an asynchronous stream, i.e. an object with `async def read(self, n=-1) -> bytes`
 /// It returns a `Tarfile` object.
-fn open_rd(fp: &PyAny, compression: &CompressionType) -> PyResult<TarfileRd> {
+fn open_rd(fp: &PyAny, compression: CompressionType) -> PyResult<TarfileRd> {
     let fp = PyReader::new_buffered(fp);
     Ok(TarfileRd {
         archive: Arc::new(Mutex::new(RdArchive::Rd(async_tar::Archive::new(

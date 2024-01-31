@@ -12,27 +12,27 @@ class AWriteStream(Protocol):
 class AReadStream(Protocol):
     async def read(self, n: int = -1, /) -> bytes: ...
 
-def open_rd(fp: AReadStream) -> Tarfile:
+def open_rd(fp: AReadStream, compression: CompressionType = CompressionType.Clear) -> TarfileRd:
     """
     Open a tar file for reading.
 
     This function takes an asynchronous stream, i.e. an object with `async def read(self, n=-1) -> bytes`
-    It returns a `Tarfile` object.
+    It returns a `TarfileRd` object.
     """
-def open_wr(fp: AWriteStream) -> Tarfile:
+def open_wr(fp: AWriteStream, compression: CompressionType = CompressionType.Clear) -> TarfileWr:
     """
     Open a tar file for writing.
     
     This function takes an asynchronous stream, i.e. an object with `async def write(self, buf: bytes) -> int`
     and `async def close(self)`
-    It returns a `Tarfile` object.
+    It returns a `TarfileWr` object.
     """
 
-class Tarfile:
+class TarfileWr:
     """
-    The main tar object.
+    The main tar builder object.
 
-    Do not construct this class manually, instead use `open_rd` and `open_wr` on the module.
+    Do not construct this class manually, instead use `open_wr` on the module.
     """
     async def add_file(self, name: str | bytes, mode: int, content: AReadStream, size: int | None = None):
         """
@@ -56,10 +56,32 @@ class Tarfile:
         """
         Close the archive.
         
-        This operation finalizes and flushes the output stream if writing and then renders the
+        This operation finalizes and flushes the output stream and then renders the
         object useless for future operations.
         """
-    def __aiter__(self) -> Tarfile:
+    async def __aenter__(self) -> TarfileWr:
+        """
+        Open the archive in a context manager.
+        
+        `TarfileWr` may be used in an `async with` block. This will cause `close()` to be
+        automatically called when the block exits.
+        """
+    async def __aexit__(self, exc_type: Any, exc: Any, tb: Any): ...
+
+class TarfileRd:
+    """
+    The main tar reader object. Enumerate over it with `async for`.
+
+    Do not construct this class manually, instead use `open_rd` on the module.
+    """
+    async def close(self):
+        """
+        Close the archive.
+        
+        This operation renders the object useless for future operations.
+        """
+
+    def __aiter__(self) -> TarfileRd:
         """
         Enumerate members of the archive.
         
@@ -68,11 +90,11 @@ class Tarfile:
         not used again after the next object is retrieved.
         """
     async def __anext__(self) -> TarfileEntry: ...
-    async def __aenter__(self) -> Tarfile:
+    async def __aenter__(self) -> TarfileRd:
         """
         Open the archive in a context manager.
         
-        `Tarfile` may be used in an `async with` block. This will cause `close()` to be
+        `TarfileRd` may be used in an `async with` block. This will cause `close()` to be
         automatically called when the block exits.
         """
     async def __aexit__(self, exc_type: Any, exc: Any, tb: Any): ...
@@ -125,3 +147,12 @@ class TarfileEntryType:
     XGlobalHeader: TarfileEntryType
     XHeader: TarfileEntryType
     Other: TarfileEntryType
+
+class CompressionType:
+    """
+    An enum for supported types of tar compression.
+    """
+    Clear: CompressionType
+    Gzip: CompressionType
+    Bzip2: CompressionType
+    Xz: CompressionType
