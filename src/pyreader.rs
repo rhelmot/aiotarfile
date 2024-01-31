@@ -1,11 +1,13 @@
 use std::{future::Future, pin::Pin, task::Poll};
 
-use async_std::io::{Read, BufRead};
+use async_std::io::Read;
 use pyo3::prelude::*;
 
 pub struct PyReader {
     fp: Py<PyAny>,
     fut: Option<Pin<Box<dyn Future<Output = PyResult<PyObject>> + Sync + Send>>>,
+    buf: Box<[u8]>,
+    bufsize: u16,
 }
 
 impl PyReader {
@@ -13,6 +15,8 @@ impl PyReader {
         Self {
             fp: fp.into(),
             fut: None,
+            buf: Box::new([0;4096]),
+            bufsize: 0,
         }
     }
 }

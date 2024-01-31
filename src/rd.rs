@@ -1,50 +1,47 @@
 use std::{borrow::BorrowMut, pin::Pin, sync::Arc, task::Poll};
 
 use async_std::{
-    io::{Read},
+    io::{Read, BufReader},
     prelude::*,
     sync::Mutex,
 };
 use async_tar::{self};
 use pyo3::{
-    exceptions::{PyStopAsyncIteration},
+    exceptions::PyStopAsyncIteration,
     prelude::*,
     pyclass::IterANextOutput,
 };
 
 use crate::pyreader::PyReader;
+use crate::{AioTarfileError, TarfileEntry};
 
 #[pyclass]
 /// The main tar object used for reading archives.
 ///
 /// Do not construct this class manually, instead use `open_rd` on the module.
-struct TarfileRd {
-    archive: Arc<Mutex<AnyRdArchive>>,
+pub struct TarfileRd {
+    pub archive: Arc<Mutex<AnyRdArchive>>,
 }
 
 enum AnyRdArchive {
     Clear(RdArchive<PyReader>),
-    Gzip(RdArchive<async_compression::futures::write::GzipDecoder<PyReader>>),
-    Bzip2(RdArchive<async_compression::futures::write::BzDecoder<PyReader>>),
-    Xz(RdArchive<async_compression::futures::write::XzDecoder<PyReader>>),
+    Gzip(RdArchive<async_compression::futures::bufread::GzipDecoder<BufReader<PyReader>>>),
+    Bzip2(RdArchive<async_compression::futures::bufread::BzDecoder<BufReader<PyReader>>>),
+    Xz(RdArchive<async_compression::futures::bufread::XzDecoder<BufReader<PyReader>>>),
 }
 
-impl Read for AnyRdArchive {
-    fn poll_read(
-        self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-        buf: &mut [u8],
-    ) -> Poll<std::io::Result<usize>> {
-        match *self {
-            AnyRdArchive::Clear(x) => x.poll_read(cx, buf),
-            AnyRdArchive::Gzip(x) => x.poll_read(cx, buf),
-            AnyRdArchive::Bzip2(x) => x.poll_read(cx, buf),
-            AnyRdArchive::Xz(x) => x.poll_read(cx, buf),
+impl AnyRdArchive {
+    fn check_error(&self) -> PyResult<()> {
+        match self {
+            AnyRdArchive::Clear(x) => x.check_error(),
+            AnyRdArchive::Gzip(x) => x.check_error(),
+            AnyRdArchive::Bzip2(x) => x.check_error(),
+            AnyRdArchive::Xz(x) => x.check_error(),
         }
     }
 }
 
-enum RdArchive<R: Read + Unpin> {
+pub enum RdArchive<R: Read + Unpin> {
     Error(std::io::Error),
     Rd(async_tar::Archive<R>),
     RdStream(async_tar::Entries<R>),
@@ -80,6 +77,17 @@ impl<R: Read + Unpin> RdArchive<R> {
             Ok(())
         }
     }
+
+    async fn next(&mut self) -> Result<Option<async_tar::Entry<async_tar::Archive<PyReader>>>, std::io::Error> {
+        match self {
+            RdArchive::Error(e) => Ok(Err(e)),
+            RdArchive::Rd(_) => {
+                self.become_stream();
+                self.next().await
+            },
+            RdArchive::RdStream(s) => s.next().await,
+        }
+    }
 }
 
 #[pymethods]
@@ -100,16 +108,7 @@ impl TarfileRd {
         pyo3_asyncio::async_std::future_into_py::<_, PyObject>(py, async move {
             let mut guard = archive.lock().await;
 
-            guard.become_stream();
-            guard.check_error()?;
-
-            let RdWrArchive::RdStream(entries) = (*guard).borrow_mut() else {
-                return Err(AioTarfileError::new_err(
-                    "Cannot iterate archive: archive not open for reading",
-                ));
-            };
-
-            match entries.next().await {
+            match guard.next().await {
                 Some(Ok(entry)) => Python::with_gil(|py| {
                     Ok(TarfileEntry {
                         entry: Arc::new(Mutex::new(entry)),
@@ -150,19 +149,19 @@ impl TarfileRd {
             let mut guard = archive.lock().await;
             guard.check_error()?;
             match (*guard).borrow_mut() {
-                RdWrArchive::Rd(_) => {}
-                RdWrArchive::RdStream(_) => {}
-                RdWrArchive::Wr(wr) => {
+                RdArchive::Rd(_) => {}
+                RdArchive::RdStream(_) => {}
+                RdArchive::Wr(wr) => {
                     wr.finish()
                         .await
                         .map_err(|_| AioTarfileError::new_err("Cannot close archive - unknown"))?;
                 }
-                RdWrArchive::Error(_) => {
+                RdArchive::Error(_) => {
                     unreachable!()
                 }
             }
 
-            *guard = RdWrArchive::Error(std::io::Error::new(
+            *guard = RdArchive::Error(std::io::Error::new(
                 std::io::ErrorKind::Other,
                 "Archive is closed",
             ));

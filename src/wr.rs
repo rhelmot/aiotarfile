@@ -33,8 +33,8 @@ impl Write for AnyWrArchive {
         cx: &mut std::task::Context<'_>,
         buf: &[u8],
     ) -> std::task::Poll<std::io::Result<usize>> {
-        match self.as_ref() {
-            AnyWrArchive::Clear(x) => x.poll_write(cx, buf),
+        match self.get_mut() {
+            AnyWrArchive::Clear(x) => Pin::new(x).poll_write(cx, buf),
             AnyWrArchive::Gzip(x) => x.poll_write(cx, buf),
             AnyWrArchive::Bzip2(x) => x.poll_write(cx, buf),
             AnyWrArchive::Xz(x) => x.poll_write(cx, buf),

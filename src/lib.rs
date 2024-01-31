@@ -12,6 +12,9 @@ use pyo3::{
     prelude::*,
     pyclass::IterANextOutput,
 };
+use pyreader::PyReader;
+use rd::{TarfileRd, RdArchive};
+use wr::{TarfileRd, RdArchive};
 
 #[pyclass]
 enum CompressionType {
@@ -35,7 +38,7 @@ mod pywriter;
 /// This function takes an asynchronous stream, i.e. an object with `async def read(self, n=-1) -> bytes`
 /// It returns a `Tarfile` object.
 fn open_rd(fp: &PyAny, compression: &CompressionType) -> PyResult<TarfileRd> {
-    Ok(Tarfile {
+    Ok(TarfileRd {
         archive: Arc::new(Mutex::new(RdArchive::Rd(async_tar::Archive::new(
             PyReader::new(fp),
         )))),
@@ -48,9 +51,9 @@ fn open_rd(fp: &PyAny, compression: &CompressionType) -> PyResult<TarfileRd> {
 /// This function takes an asynchronous stream, i.e. an object with `async def write(self, buf: bytes) -> int`
 /// and `async def close(self)`
 /// It returns a `Tarfile` object.
-fn open_wr(fp: &PyAny) -> PyResult<Tarfile> {
-    Ok(Tarfile {
-        archive: Arc::new(Mutex::new(RdWrArchive::Wr(async_tar::Builder::new(
+fn open_wr(fp: &PyAny) -> PyResult<TarfileRd> {
+    Ok(TarfileRd {
+        archive: Arc::new(Mutex::new(WrArchive::Wr(async_tar::Builder::new(
             PyWriter::new(fp),
         )))),
     })
