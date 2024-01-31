@@ -59,6 +59,9 @@ impl<R: Read + Unpin> RdArchive<R> {
 }
 
 #[pymethods]
+/// The main tar reader object. Enumerate over it with `async for`.
+///
+/// Do not construct this class manually, instead use `open_rd` on the module.
 impl TarfileRd {
     /// Enumerate members of the archive.
     ///

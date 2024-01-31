@@ -31,7 +31,7 @@ mod wr;
 /// Open a tar file for reading.
 ///
 /// This function takes an asynchronous stream, i.e. an object with `async def read(self, n=-1) -> bytes`
-/// It returns a `Tarfile` object.
+/// It returns a `TarfileRd` object.
 fn open_rd(fp: &PyAny, compression: CompressionType) -> PyResult<TarfileRd> {
     let fp = PyReader::new_buffered(fp);
     Ok(TarfileRd {
@@ -58,7 +58,7 @@ fn open_rd(fp: &PyAny, compression: CompressionType) -> PyResult<TarfileRd> {
 ///
 /// This function takes an asynchronous stream, i.e. an object with `async def write(self, buf: bytes) -> int`
 /// and `async def close(self)`
-/// It returns a `Tarfile` object.
+/// It returns a `TarfileWr` object.
 fn open_wr(fp: &PyAny, compression: CompressionType) -> PyResult<TarfileWr> {
     let fp = PyWriter::new(fp);
     Ok(TarfileWr {

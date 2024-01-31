@@ -22,6 +22,9 @@ pub struct TarfileWr {
 }
 
 #[pymethods]
+/// The main tar builder object.
+///
+/// Do not construct this class manually, instead use `open_wr` on the module.
 impl TarfileWr {
     #[pyo3(signature = (name, mode, content, size = None))]
     /// Add a regular file to the archive.
