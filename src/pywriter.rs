@@ -1,4 +1,4 @@
-use std::{future::Future, pin::Pin, task::Poll};
+use std::{future::Future, io, pin::Pin, task::Poll};
 
 use async_std::io::Write;
 use pyo3::prelude::*;
@@ -96,20 +96,21 @@ impl Write for PyWriter {
         }
 
         let fp = self.fp.clone();
-        match Python::with_gil(move |py| match fp.call_method0(py, "flush") {
-            Ok(coro) => match pyo3_asyncio::async_std::into_future(coro.as_ref(py)) {
-                Ok(fut) => {
-                    self.fut = Some(Box::pin(fut));
-                    Ok(())
-                }
-                Err(e) => Err(e),
-            },
-            Err(e) => Err(e),
+        match Python::with_gil(move |py| -> Result<bool, io::Error> {
+            let Some(flush) = fp.getattr(py, "flush").ok() else {
+                return Ok(false);
+            };
+
+            self.fut = Some(Box::pin(pyo3_asyncio::async_std::into_future(
+                flush.call0(py)?.as_ref(py),
+            )?));
+            Ok(true)
         }) {
-            Ok(()) => {
+            Ok(true) => {
                 cx.waker().wake_by_ref();
                 Poll::Pending
             }
+            Ok(false) => Poll::Ready(Ok(())),
             Err(e) => Poll::Ready(Err(std::io::Error::new(
                 std::io::ErrorKind::Other,
                 format!("could not create flush() coroutine(): {}", e),

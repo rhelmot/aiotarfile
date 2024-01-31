@@ -15,6 +15,7 @@ dependencies = [
  "async-compression",
  "async-std",
  "async-tar",
+ "futures-util",
  "pyo3",
  "pyo3-asyncio",
  "replace_with",

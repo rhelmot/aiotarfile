@@ -17,3 +17,4 @@ async-tar = "0.4.2"
 pyo3 = "0.20.2"
 pyo3-asyncio = { version = "0.20.0", features = ["async-std-runtime"] }
 replace_with = "0.1.7"
+futures-util = "0.3.30"

@@ -1,36 +1,29 @@
-use std::{borrow::BorrowMut, future::Future, pin::Pin, sync::Arc, task::Poll};
+use std::sync::Arc;
 
-use async_std::{
-    io::{empty, Cursor, Read, Write},
-    prelude::*,
-    sync::Mutex,
-};
-use async_tar::{self, EntryType, Header};
-use pyo3::{
-    create_exception,
-    exceptions::{PyException, PyStopAsyncIteration},
-    prelude::*,
-    pyclass::IterANextOutput,
-};
+use async_std::{io::Read, prelude::*, sync::Mutex};
+use async_tar::{self, EntryType};
+use pyo3::{create_exception, exceptions::PyException, prelude::*};
 use pyreader::PyReader;
-use rd::{TarfileRd, RdArchive};
-use wr::{TarfileRd, RdArchive};
+use pywriter::PyWriter;
+use rd::{RdArchive, TarfileRd};
+use wr::TarfileWr;
 
 #[pyclass]
+#[derive(Copy, Clone)]
 enum CompressionType {
     Clear,
     Gzip,
     Bzip2,
     Xz,
-    Detect,
+    // Detect,  // https://github.com/Nullus157/async-compression/issues/258
 }
 
 create_exception!(aiotarfile, AioTarfileError, PyException);
 
-mod rd;
-mod wr;
 mod pyreader;
 mod pywriter;
+mod rd;
+mod wr;
 
 #[pyfunction]
 /// Open a tar file for reading.
@@ -38,31 +31,52 @@ mod pywriter;
 /// This function takes an asynchronous stream, i.e. an object with `async def read(self, n=-1) -> bytes`
 /// It returns a `Tarfile` object.
 fn open_rd(fp: &PyAny, compression: &CompressionType) -> PyResult<TarfileRd> {
+    let fp = PyReader::new_buffered(fp);
     Ok(TarfileRd {
         archive: Arc::new(Mutex::new(RdArchive::Rd(async_tar::Archive::new(
-            PyReader::new(fp),
+            match compression {
+                CompressionType::Clear => Box::new(fp),
+                CompressionType::Gzip => {
+                    Box::new(async_compression::futures::bufread::GzipDecoder::new(fp))
+                }
+                CompressionType::Bzip2 => {
+                    Box::new(async_compression::futures::bufread::BzDecoder::new(fp))
+                }
+                CompressionType::Xz => {
+                    Box::new(async_compression::futures::bufread::XzDecoder::new(fp))
+                }
+            },
         )))),
     })
 }
 
 #[pyfunction]
+#[pyo3(signature = (fp, compression = CompressionType::Clear))]
 /// Open a tar file for writing.
 ///
 /// This function takes an asynchronous stream, i.e. an object with `async def write(self, buf: bytes) -> int`
 /// and `async def close(self)`
 /// It returns a `Tarfile` object.
-fn open_wr(fp: &PyAny) -> PyResult<TarfileRd> {
-    Ok(TarfileRd {
-        archive: Arc::new(Mutex::new(WrArchive::Wr(async_tar::Builder::new(
-            PyWriter::new(fp),
-        )))),
+fn open_wr(fp: &PyAny, compression: CompressionType) -> PyResult<TarfileWr> {
+    let fp = PyWriter::new(fp);
+    Ok(TarfileWr {
+        archive: Arc::new(Mutex::new(Ok(async_tar::Builder::new(match compression {
+            CompressionType::Clear => Box::new(fp),
+            CompressionType::Gzip => {
+                Box::new(async_compression::futures::write::GzipEncoder::new(fp))
+            }
+            CompressionType::Bzip2 => {
+                Box::new(async_compression::futures::write::BzEncoder::new(fp))
+            }
+            CompressionType::Xz => Box::new(async_compression::futures::write::XzEncoder::new(fp)),
+        })))),
     })
 }
 
 #[pyclass]
 /// A single member of a tar archive.
 struct TarfileEntry {
-    entry: Arc<Mutex<async_tar::Entry<async_tar::Archive<PyReader>>>>,
+    entry: Arc<Mutex<async_tar::Entry<async_tar::Archive<Box<dyn Read + Unpin + Send>>>>>,
 }
 
 #[pymethods]
@@ -88,7 +102,10 @@ impl TarfileEntry {
         let Some(guard) = self.entry.try_lock() else {
             return Err(AioTarfileError::new_err("Another operation is in progress"));
         };
-        guard.header().mode().map_err(|e| AioTarfileError::new_err(e))
+        guard
+            .header()
+            .mode()
+            .map_err(|e| AioTarfileError::new_err(e))
     }
 
     /// Retrieve the link target path of an entry as a bytestring.
@@ -183,9 +200,11 @@ impl From<async_tar::EntryType> for TarfileEntryType {
 fn aiotarfile(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(open_rd, m)?)?;
     m.add_function(wrap_pyfunction!(open_wr, m)?)?;
-    m.add_class::<Tarfile>()?;
+    m.add_class::<TarfileRd>()?;
+    m.add_class::<TarfileWr>()?;
     m.add_class::<TarfileEntry>()?;
     m.add_class::<TarfileEntryType>()?;
+    m.add_class::<CompressionType>()?;
     m.add("AioTarfileError", py.get_type::<AioTarfileError>())?;
     Ok(())
 }

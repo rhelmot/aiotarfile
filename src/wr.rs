@@ -1,4 +1,4 @@
-use std::{borrow::BorrowMut, sync::Arc, pin::Pin};
+use std::{borrow::BorrowMut, io, sync::Arc};
 
 use async_std::{
     io::{empty, Cursor, Write},
@@ -6,9 +6,9 @@ use async_std::{
     sync::Mutex,
 };
 use async_tar::{self, EntryType, Header};
+use futures_util::io::AsyncWriteExt;
 use pyo3::prelude::*;
 
-use crate::pywriter::PyWriter;
 use crate::pyreader::PyReader;
 use crate::AioTarfileError;
 
@@ -16,53 +16,9 @@ use crate::AioTarfileError;
 /// The main tar object used for writing archives.
 ///
 /// Do not construct this class manually, instead use `open_wr` on the module.
-struct TarfileWr {
-    archive: Arc<Mutex<Result<AnyWrArchive, std::io::Error>>>,
-}
-
-enum AnyWrArchive {
-    Clear(WrArchive<PyWriter>),
-    Gzip(WrArchive<async_compression::futures::write::GzipEncoder<PyWriter>>),
-    Bzip2(WrArchive<async_compression::futures::write::BzEncoder<PyWriter>>),
-    Xz(WrArchive<async_compression::futures::write::XzEncoder<PyWriter>>),
-}
-
-impl Write for AnyWrArchive {
-    fn poll_write(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-        buf: &[u8],
-    ) -> std::task::Poll<std::io::Result<usize>> {
-        match self.get_mut() {
-            AnyWrArchive::Clear(x) => Pin::new(x).poll_write(cx, buf),
-            AnyWrArchive::Gzip(x) => x.poll_write(cx, buf),
-            AnyWrArchive::Bzip2(x) => x.poll_write(cx, buf),
-            AnyWrArchive::Xz(x) => x.poll_write(cx, buf),
-        }
-    }
-
-    fn poll_flush(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<std::io::Result<()>> {
-        match *self {
-            AnyWrArchive::Clear(x) => x.poll_flush(cx),
-            AnyWrArchive::Gzip(x) => x.poll_flush(cx),
-            AnyWrArchive::Bzip2(x) => x.poll_flush(cx),
-            AnyWrArchive::Xz(x) => x.poll_flush(cx),
-        }
-    }
-
-    fn poll_close(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<std::io::Result<()>> {
-        match *self {
-            AnyWrArchive::Clear(x) => x.poll_close(cx),
-            AnyWrArchive::Gzip(x) => x.poll_close(cx),
-            AnyWrArchive::Bzip2(x) => x.poll_close(cx),
-            AnyWrArchive::Xz(x) => x.poll_close(cx),
-        }
-    }
-}
-
-enum WrArchive<W: Write + Unpin + Send + Sync> {
-    Error(std::io::Error),
-    Wr(async_tar::Builder<W>),
+pub struct TarfileWr {
+    pub archive:
+        Arc<Mutex<Result<async_tar::Builder<Box<dyn Write + Unpin + Send + Sync>>, io::Error>>>,
 }
 
 #[pymethods]
@@ -88,18 +44,16 @@ impl TarfileWr {
         let name = name.to_string();
         pyo3_asyncio::async_std::future_into_py(py, async move {
             let mut guard = archive.lock().await;
-            let Ok(archive) = (*guard).borrow_mut() else {
-                return Err(AioTarfileError::new_err(
-                    "Cannot add file: archive not open for writing",
-                ));
-            };
+            let archive = guard
+                .as_mut()
+                .map_err(|e| AioTarfileError::new_err(e.to_string()))?;
             let mut header = Header::new_gnu();
             header.set_mode(mode);
             header.set_entry_type(EntryType::file());
             if let Some(size) = size {
                 header.set_size(size);
                 archive
-                    .append_data(&mut header, name, PyReader::new(content))
+                    .append_data(&mut header, &name, &mut PyReader::new(content))
                     .await
                     .map_err(|e| AioTarfileError::new_err(format!("Cannot add file: {}", e)))?;
             } else {
@@ -110,7 +64,7 @@ impl TarfileWr {
                     .map_err(|e| AioTarfileError::new_err(e))?;
                 header.set_size(buffered.len() as u64);
                 archive
-                    .append_data(&mut header, name, Cursor::new(buffered))
+                    .append_data(&mut header, &name, &mut Cursor::new(buffered))
                     .await
                     .map_err(|e| AioTarfileError::new_err(format!("Cannot add file: {}", e)))?;
             }
@@ -134,7 +88,7 @@ impl TarfileWr {
             header.set_size(0);
             header.set_entry_type(EntryType::dir());
             archive
-                .append_data(&mut header, name, empty())
+                .append_data(&mut header, &name, &mut empty())
                 .await
                 .map_err(|e| AioTarfileError::new_err(e))?;
             Ok(Python::with_gil(|py| py.None()))
@@ -167,7 +121,7 @@ impl TarfileWr {
                 .set_link_name(target)
                 .map_err(|e| AioTarfileError::new_err(e))?;
             archive
-                .append_data(&mut header, name, empty())
+                .append_data(&mut header, &name, &mut empty())
                 .await
                 .map_err(|e| AioTarfileError::new_err(e))?;
             Ok(Python::with_gil(|py| py.None()))
@@ -182,22 +136,22 @@ impl TarfileWr {
         let archive = self.archive.clone();
         pyo3_asyncio::async_std::future_into_py(py, async move {
             let mut guard = archive.lock().await;
-            guard.check_error()?;
-            match (*guard).borrow_mut() {
-                Ok(wr) => {
-                    wr.finish()
-                        .await
-                        .map_err(|_| AioTarfileError::new_err("Cannot close archive - unknown"))?;
-                }
-                Err(_) => {
-                    unreachable!()
-                }
-            }
-
-            *guard = Err(std::io::Error::new(
+            //let archive = guard
+            //    .as_mut()
+            //    .map_err(|e| AioTarfileError::new_err(e.to_string()))?;
+            let archive2 = &mut (*guard);
+            let mut archive = Err(std::io::Error::new(
                 std::io::ErrorKind::Other,
                 "Archive is closed",
             ));
+            std::mem::swap(&mut archive, archive2);
+            archive?
+                .into_inner()
+                .await
+                .map_err(|e| AioTarfileError::new_err(e))?
+                .close()
+                .await?;
+
             Ok(Python::with_gil(|py| py.None()))
         })
     }
@@ -220,4 +174,3 @@ impl TarfileWr {
         self.close(py)
     }
 }
-
