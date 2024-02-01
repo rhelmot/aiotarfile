@@ -3,6 +3,8 @@ use std::sync::Arc;
 use async_std::{io::Read, prelude::*, sync::Mutex};
 use async_tar::{self, EntryType};
 use pyo3::{create_exception, exceptions::PyException, prelude::*};
+use async_peek::AsyncPeekExt;
+
 use pyreader::PyReader;
 use pywriter::PyWriter;
 use rd::{RdArchive, TarfileRd};
@@ -16,7 +18,7 @@ enum CompressionType {
     Gzip,
     Bzip2,
     Xz,
-    // Detect,  // https://github.com/Nullus157/async-compression/issues/258
+    Detect,
 }
 
 create_exception!(aiotarfile, AioTarfileError, PyException);
@@ -46,6 +48,9 @@ fn open_rd(fp: &PyAny, compression: CompressionType) -> PyResult<TarfileRd> {
                 }
                 CompressionType::Xz => {
                     Box::new(async_compression::futures::bufread::XzDecoder::new(fp))
+                }
+                CompressionType::Detect => {
+                    let peek = fp.;
                 }
             },
         )))),
