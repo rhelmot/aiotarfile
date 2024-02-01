@@ -1,7 +1,9 @@
 use std::{future::Future, pin::Pin, task::Poll};
 
-use async_std::io::{BufReader, Read};
+use async_std::io::BufReader;
 use pyo3::prelude::*;
+
+use crate::AioTarfileError;
 
 pub struct PyReader {
     fp: Py<PyAny>,
@@ -21,7 +23,7 @@ impl PyReader {
     }
 }
 
-impl Read for PyReader {
+impl async_std::io::Read for PyReader {
     fn poll_read(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,

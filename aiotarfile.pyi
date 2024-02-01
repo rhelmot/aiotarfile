@@ -12,14 +12,14 @@ class AWriteStream(Protocol):
 class AReadStream(Protocol):
     async def read(self, n: int = -1, /) -> bytes: ...
 
-def open_rd(fp: AReadStream, compression: CompressionType = CompressionType.Clear) -> TarfileRd:
+async def open_rd(fp: AReadStream, compression: CompressionType = CompressionType.Detect) -> TarfileRd:
     """
     Open a tar file for reading.
 
     This function takes an asynchronous stream, i.e. an object with `async def read(self, n=-1) -> bytes`
     It returns a `TarfileRd` object.
     """
-def open_wr(fp: AWriteStream, compression: CompressionType = CompressionType.Clear) -> TarfileWr:
+async def open_wr(fp: AWriteStream, compression: CompressionType = CompressionType.Clear) -> TarfileWr:
     """
     Open a tar file for writing.
     
@@ -156,3 +156,4 @@ class CompressionType:
     Gzip: CompressionType
     Bzip2: CompressionType
     Xz: CompressionType
+    Detect: CompressionType

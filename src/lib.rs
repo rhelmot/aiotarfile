@@ -2,9 +2,8 @@ use std::sync::Arc;
 
 use async_std::{io::Read, prelude::*, sync::Mutex};
 use async_tar::{self, EntryType};
+use peek_buf_reader::BufReader;
 use pyo3::{create_exception, exceptions::PyException, prelude::*};
-use async_peek::AsyncPeekExt;
-
 use pyreader::PyReader;
 use pywriter::PyWriter;
 use rd::{RdArchive, TarfileRd};
@@ -23,37 +22,79 @@ enum CompressionType {
 
 create_exception!(aiotarfile, AioTarfileError, PyException);
 
+mod peek_buf_reader;
 mod pyreader;
 mod pywriter;
 mod rd;
 mod wr;
 
 #[pyfunction]
-#[pyo3(signature = (fp, compression = CompressionType::Clear))]
+#[pyo3(signature = (fp, compression = CompressionType::Detect))]
 /// Open a tar file for reading.
 ///
 /// This function takes an asynchronous stream, i.e. an object with `async def read(self, n=-1) -> bytes`
 /// It returns a `TarfileRd` object.
-fn open_rd(fp: &PyAny, compression: CompressionType) -> PyResult<TarfileRd> {
+fn open_rd<'p>(py: Python<'p>, fp: &'p PyAny, compression: CompressionType) -> PyResult<&'p PyAny> {
     let fp = PyReader::new_buffered(fp);
-    Ok(TarfileRd {
-        archive: Arc::new(Mutex::new(RdArchive::Rd(async_tar::Archive::new(
-            match compression {
-                CompressionType::Clear => Box::new(fp),
-                CompressionType::Gzip => {
-                    Box::new(async_compression::futures::bufread::GzipDecoder::new(fp))
-                }
-                CompressionType::Bzip2 => {
-                    Box::new(async_compression::futures::bufread::BzDecoder::new(fp))
-                }
-                CompressionType::Xz => {
-                    Box::new(async_compression::futures::bufread::XzDecoder::new(fp))
-                }
-                CompressionType::Detect => {
-                    let peek = fp.;
-                }
-            },
-        )))),
+    pyo3_asyncio::async_std::future_into_py(py, async move {
+        Ok(TarfileRd {
+            archive: Arc::new(Mutex::new(RdArchive::Rd(async_tar::Archive::new(
+                match compression {
+                    CompressionType::Clear => Box::new(fp),
+                    CompressionType::Gzip => {
+                        Box::new(async_compression::futures::bufread::GzipDecoder::new(fp))
+                    }
+                    CompressionType::Bzip2 => {
+                        Box::new(async_compression::futures::bufread::BzDecoder::new(fp))
+                    }
+                    CompressionType::Xz => {
+                        Box::new(async_compression::futures::bufread::XzDecoder::new(fp))
+                    }
+                    CompressionType::Detect => {
+                        // moderate nightmares commence
+                        let mut fp = fp.into_inner();
+                        let mut peek = [0u8; 263];
+                        let mut bufsize = 0;
+                        while bufsize < 263 {
+                            let result = fp
+                                .read(&mut peek[bufsize..])
+                                .await
+                                .map_err(|e| AioTarfileError::new_err(e))?;
+                            if result == 0 {
+                                break;
+                            }
+                            bufsize += result;
+                        }
+                        let compression = match peek {
+                            [.., 0x75, 0x73, 0x74, 0x61, 0x72, _] => CompressionType::Clear,
+                            [0x1f, 0x8b, ..] => CompressionType::Gzip,
+                            [0x42, 0x5a, 0x68, ..] => CompressionType::Bzip2,
+                            [0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00, ..] => CompressionType::Xz,
+                            _ => {
+                                return Err(AioTarfileError::new_err(
+                                    "Unsupported compression or bad data",
+                                ));
+                            }
+                        };
+
+                        let fp = BufReader::with_inital_buffer(&peek, 4096, fp);
+                        match compression {
+                            CompressionType::Clear => Box::new(fp),
+                            CompressionType::Gzip => {
+                                Box::new(async_compression::futures::bufread::GzipDecoder::new(fp))
+                            }
+                            CompressionType::Bzip2 => {
+                                Box::new(async_compression::futures::bufread::BzDecoder::new(fp))
+                            }
+                            CompressionType::Xz => {
+                                Box::new(async_compression::futures::bufread::XzDecoder::new(fp))
+                            }
+                            CompressionType::Detect => unreachable!(),
+                        }
+                    }
+                },
+            )))),
+        })
     })
 }
 
@@ -64,19 +105,28 @@ fn open_rd(fp: &PyAny, compression: CompressionType) -> PyResult<TarfileRd> {
 /// This function takes an asynchronous stream, i.e. an object with `async def write(self, buf: bytes) -> int`
 /// and `async def close(self)`
 /// It returns a `TarfileWr` object.
-fn open_wr(fp: &PyAny, compression: CompressionType) -> PyResult<TarfileWr> {
+fn open_wr<'p>(py: Python<'p>, fp: &'p PyAny, compression: CompressionType) -> PyResult<&'p PyAny> {
     let fp = PyWriter::new(fp);
-    Ok(TarfileWr {
-        archive: Arc::new(Mutex::new(Ok(async_tar::Builder::new(match compression {
-            CompressionType::Clear => Box::new(fp),
-            CompressionType::Gzip => {
-                Box::new(async_compression::futures::write::GzipEncoder::new(fp))
-            }
-            CompressionType::Bzip2 => {
-                Box::new(async_compression::futures::write::BzEncoder::new(fp))
-            }
-            CompressionType::Xz => Box::new(async_compression::futures::write::XzEncoder::new(fp)),
-        })))),
+    pyo3_asyncio::async_std::future_into_py(py, async move {
+        Ok(TarfileWr {
+            archive: Arc::new(Mutex::new(Ok(async_tar::Builder::new(match compression {
+                CompressionType::Clear => Box::new(fp),
+                CompressionType::Gzip => {
+                    Box::new(async_compression::futures::write::GzipEncoder::new(fp))
+                }
+                CompressionType::Bzip2 => {
+                    Box::new(async_compression::futures::write::BzEncoder::new(fp))
+                }
+                CompressionType::Xz => {
+                    Box::new(async_compression::futures::write::XzEncoder::new(fp))
+                }
+                CompressionType::Detect => {
+                    return Err(AioTarfileError::new_err(
+                        "Cannot detect compression for writing new archive",
+                    ));
+                }
+            })))),
+        })
     })
 }
 
