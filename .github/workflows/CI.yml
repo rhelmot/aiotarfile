@@ -122,8 +122,9 @@ jobs:
       - uses: actions/download-artifact@v3
         with:
           name: wheels
+          pattern: *x86_64*
       - name: Install
-        run: 'find && pip install --pre --find-links ./wheels aiotarfile pytest'
+        run: 'pip install --pre --find-links . aiotarfile pytest'
       - name: Test
         run: 'pytest -v tests'
 
