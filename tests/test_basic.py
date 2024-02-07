@@ -57,6 +57,7 @@ class TestBasic(unittest.IsolatedAsyncioTestCase):
                     if entry.name() == b'test':
                         assert entry.entry_type() == aiotarfile.TarfileEntryType.Regular
                         assert entry.mode() == 0o755
+                        assert entry.size() == 11
                         assert await entry.read() == b'hello world'
                     elif entry.name() == b'dir':
                         assert entry.entry_type() == aiotarfile.TarfileEntryType.Directory

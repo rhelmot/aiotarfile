@@ -165,6 +165,17 @@ impl TarfileEntry {
             .map_err(|e| AioTarfileError::new_err(e))
     }
 
+    /// Retrieve the filesize of an entry as an int.
+    fn size(&self) -> PyResult<u64> {
+        let Some(guard) = self.entry.try_lock() else {
+            return Err(AioTarfileError::new_err("Another operation is in progress"));
+        };
+        guard
+            .header()
+            .size()
+            .map_err(|e| AioTarfileError::new_err(e))
+    }
+
     /// Retrieve the link target path of an entry as a bytestring.
     ///
     /// This method will raise an exception if used on an entry which is not a link.

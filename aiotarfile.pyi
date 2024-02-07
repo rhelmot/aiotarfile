@@ -122,6 +122,10 @@ class TarfileEntry:
         """
         Retrieve the mode, or permissions, of an entry as an int.
         """
+    def size(self) -> int:
+        """
+        Retrieve the filesize of an entry as an int.
+        """
     def link_target(self) -> bytes:
         """
         Retrieve the link target path of an entry as a bytestring.
