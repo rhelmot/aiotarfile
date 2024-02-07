@@ -123,7 +123,7 @@ jobs:
         with:
           name: wheels
       - name: Install
-        run: 'pip install --pre --find-links ./wheels/dist aiotarfile pytest'
+        run: 'find && pip install --pre --find-links ./wheels aiotarfile pytest'
       - name: Test
         run: 'pytest -v tests'
 
