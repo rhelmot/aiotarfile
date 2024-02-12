@@ -83,6 +83,7 @@ impl TarfileRd {
                 Some(Ok(entry)) => Python::with_gil(|py| {
                     Ok(TarfileEntry {
                         entry: Arc::new(Mutex::new(entry)),
+                        open: false,
                     }
                     .into_py(py))
                 }),

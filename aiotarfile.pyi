@@ -132,6 +132,8 @@ class TarfileEntry:
 
         This method will raise an exception if used on an entry which is not a link.
         """
+    async def __aenter__(self) -> TarfileEntry: ...
+    async def __aexit__(self, exc_type: Any, exc: Any, tb: Any): ...
 
 class TarfileEntryType:
     """

@@ -52,22 +52,23 @@ class TestBasic(unittest.IsolatedAsyncioTestCase):
             async with await aiotarfile.open_rd(fp, xcompression) as tar:
                 seen = set()
                 async for entry in tar:
-                    assert entry.name() not in seen
-                    seen.add(entry.name())
-                    if entry.name() == b'test':
-                        assert entry.entry_type() == aiotarfile.TarfileEntryType.Regular
-                        assert entry.mode() == 0o100755
-                        assert entry.size() == 11
-                        assert await entry.read() == b'hello world'
-                    elif entry.name() == b'dir':
-                        assert entry.entry_type() == aiotarfile.TarfileEntryType.Directory
-                        assert entry.mode() == 0o040755
-                    elif entry.name() == b'dir/test':
-                        assert entry.entry_type() == aiotarfile.TarfileEntryType.Symlink
-                        assert entry.mode() == 0o120777
-                        assert entry.link_target() == b'../test'
-                    else:
-                        raise Exception("Unexpected entry", entry.name())
+                    async with entry:
+                        assert entry.name() not in seen
+                        seen.add(entry.name())
+                        if entry.name() == b'test':
+                            assert entry.entry_type() == aiotarfile.TarfileEntryType.Regular
+                            assert entry.mode() == 0o100755
+                            assert entry.size() == 11
+                            assert await entry.read() == b'hello world'
+                        elif entry.name() == b'dir':
+                            assert entry.entry_type() == aiotarfile.TarfileEntryType.Directory
+                            assert entry.mode() == 0o040755
+                        elif entry.name() == b'dir/test':
+                            assert entry.entry_type() == aiotarfile.TarfileEntryType.Symlink
+                            assert entry.mode() == 0o120777
+                            assert entry.link_target() == b'../test'
+                        else:
+                            raise Exception("Unexpected entry", entry.name())
 
 if __name__ == '__main__':
     unittest.main()

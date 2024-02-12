@@ -134,12 +134,16 @@ fn open_wr<'p>(py: Python<'p>, fp: &'p PyAny, compression: CompressionType) -> P
 /// A single member of a tar archive.
 struct TarfileEntry {
     entry: Arc<Mutex<async_tar::Entry<async_tar::Archive<Box<dyn Read + Unpin + Send>>>>>,
+    open: bool,
 }
 
 #[pymethods]
 impl TarfileEntry {
     /// Retrieve the filepath of the entry as a bytestring.
     fn name<'p>(&self, py: Python<'p>) -> PyResult<&'p pyo3::types::PyBytes> {
+        if !self.open {
+            return Err(AioTarfileError::new_err("Entry is not open - use it in an async with block"));
+        }
         let Some(guard) = self.entry.try_lock() else {
             return Err(AioTarfileError::new_err("Another operation is in progress"));
         };
@@ -148,6 +152,9 @@ impl TarfileEntry {
 
     /// Retrieve the type of the entry as a `TarfileEntryType` enum.
     fn entry_type(&self) -> PyResult<TarfileEntryType> {
+        if !self.open {
+            return Err(AioTarfileError::new_err("Entry is not open - use it in an async with block"));
+        }
         let Some(guard) = self.entry.try_lock() else {
             return Err(AioTarfileError::new_err("Another operation is in progress"));
         };
@@ -156,6 +163,9 @@ impl TarfileEntry {
 
     /// Retrieve the mode, or permissions, of an entry as an int.
     fn mode(&self) -> PyResult<u32> {
+        if !self.open {
+            return Err(AioTarfileError::new_err("Entry is not open - use it in an async with block"));
+        }
         let Some(guard) = self.entry.try_lock() else {
             return Err(AioTarfileError::new_err("Another operation is in progress"));
         };
@@ -167,6 +177,9 @@ impl TarfileEntry {
 
     /// Retrieve the filesize of an entry as an int.
     fn size(&self) -> PyResult<u64> {
+        if !self.open {
+            return Err(AioTarfileError::new_err("Entry is not open - use it in an async with block"));
+        }
         let Some(guard) = self.entry.try_lock() else {
             return Err(AioTarfileError::new_err("Another operation is in progress"));
         };
@@ -180,6 +193,9 @@ impl TarfileEntry {
     ///
     /// This method will raise an exception if used on an entry which is not a link.
     fn link_target<'p>(&self, py: Python<'p>) -> PyResult<&'p pyo3::types::PyBytes> {
+        if !self.open {
+            return Err(AioTarfileError::new_err("Entry is not open - use it in an async with block"));
+        }
         let Some(guard) = self.entry.try_lock() else {
             return Err(AioTarfileError::new_err("Another operation is in progress"));
         };
@@ -195,6 +211,9 @@ impl TarfileEntry {
     /// This method makes this object usable as an async bytestream.
     /// This method won't return anything useful on anything other than a regular file entry.
     fn read<'p>(&self, py: Python<'p>, n: isize) -> PyResult<&'p PyAny> {
+        if !self.open {
+            return Err(AioTarfileError::new_err("Entry is not open - use it in an async with block"));
+        }
         let entry = self.entry.clone();
         pyo3_asyncio::async_std::future_into_py(py, async move {
             let mut entry = entry.lock().await;
@@ -217,6 +236,24 @@ impl TarfileEntry {
                     pyo3::types::PyBytes::new(py, &buf[..real_n]).to_object(py)
                 }))
             }
+        })
+    }
+
+    fn __aenter__<'p>(this: Py<Self>, py: Python<'p>) -> PyResult<&'p PyAny> {
+        pyo3_asyncio::async_std::future_into_py(py, async move {
+            Ok(Python::with_gil(|py| {
+                this.borrow_mut(py).open = true;
+                py.None().to_object(py)
+            }))
+        })
+    }
+
+    fn __aexit__<'p>(this: Py<Self>, py: Python<'p>, a: PyObject, b: PyObject, c: PyObject) -> PyResult<&'p PyAny> {
+        pyo3_asyncio::async_std::future_into_py(py, async move {
+            Ok(Python::with_gil(|py| {
+                this.borrow_mut(py).open = false;
+                py.None().to_object(py)
+            }))
         })
     }
 }
