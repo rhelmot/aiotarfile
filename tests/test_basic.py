@@ -56,15 +56,15 @@ class TestBasic(unittest.IsolatedAsyncioTestCase):
                     seen.add(entry.name())
                     if entry.name() == b'test':
                         assert entry.entry_type() == aiotarfile.TarfileEntryType.Regular
-                        assert entry.mode() == 0o755
+                        assert entry.mode() == 0o100755
                         assert entry.size() == 11
                         assert await entry.read() == b'hello world'
                     elif entry.name() == b'dir':
                         assert entry.entry_type() == aiotarfile.TarfileEntryType.Directory
-                        assert entry.mode() == 0o755
+                        assert entry.mode() == 0o040755
                     elif entry.name() == b'dir/test':
                         assert entry.entry_type() == aiotarfile.TarfileEntryType.Symlink
-                        assert entry.mode() == 0o777
+                        assert entry.mode() == 0o120777
                         assert entry.link_target() == b'../test'
                     else:
                         raise Exception("Unexpected entry", entry.name())

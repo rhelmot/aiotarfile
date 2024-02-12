@@ -51,7 +51,7 @@ impl TarfileWr {
                 .as_mut()
                 .map_err(|e| AioTarfileError::new_err(e.to_string()))?;
             let mut header = Header::new_gnu();
-            header.set_mode(mode);
+            header.set_mode(mode | 0o100000);
             header.set_entry_type(EntryType::file());
             if let Some(size) = size {
                 header.set_size(size);
@@ -87,7 +87,7 @@ impl TarfileWr {
                 ));
             };
             let mut header = Header::new_gnu();
-            header.set_mode(mode);
+            header.set_mode(mode | 0o40000);
             header.set_size(0);
             header.set_entry_type(EntryType::dir());
             archive
@@ -117,7 +117,7 @@ impl TarfileWr {
                 ));
             };
             let mut header = Header::new_gnu();
-            header.set_mode(mode);
+            header.set_mode(mode | 0o120000);
             header.set_size(0);
             header.set_entry_type(EntryType::symlink());
             header
