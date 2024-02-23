@@ -124,7 +124,7 @@ jobs:
           name: wheels
           pattern: '*x86_64*'
       - name: Install
-        run: 'pip install --pre --find-links . pytest'
+        run: 'pip install --pre --find-links . aiotarfile pytest'
       - name: Test
         run: 'pytest -v tests'
 
