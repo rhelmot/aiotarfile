@@ -10,7 +10,7 @@ checksum = "f26201604c87b1e01bd3d98f8d5d9a8fcbb815e8cedb41ffccbeb4bf593a35fe"
 
 [[package]]
 name = "aiotarfile"
-version = "0.2.1-dev.1"
+version = "0.2.2-dev.1"
 dependencies = [
  "async-compression",
  "async-std",
@@ -216,8 +216,7 @@ dependencies = [
 [[package]]
 name = "async-tar"
 version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c49359998a76e32ef6e870dbc079ebad8f1e53e8441c5dd39d27b44493fe331"
+source = "git+https://github.com/dignifiedquire/async-tar?branch=master#748fee5c70ee3aae297ff5e85ab11371bbb52407"
 dependencies = [
  "async-std",
  "filetime",
