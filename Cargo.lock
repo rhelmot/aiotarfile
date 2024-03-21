@@ -216,7 +216,7 @@ dependencies = [
 [[package]]
 name = "async-tar"
 version = "0.4.2"
-source = "git+https://github.com/dignifiedquire/async-tar?branch=master#748fee5c70ee3aae297ff5e85ab11371bbb52407"
+source = "git+https://github.com/sky1e/async-tar?branch=master#76b0b33b768a65cd8212cd17c5a83c1c0d34af38"
 dependencies = [
  "async-std",
  "filetime",
