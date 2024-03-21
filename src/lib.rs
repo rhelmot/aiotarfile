@@ -44,13 +44,13 @@ fn open_rd<'p>(py: Python<'p>, fp: &'p PyAny, compression: CompressionType) -> P
                     CompressionType::Gzip => {
                         let mut a = async_compression::futures::bufread::GzipDecoder::new(fp);
                         a.multiple_members(true);
-                        Box::new(a)
+                        Box::new(BufReader::new(a))
                     }
                     CompressionType::Bzip2 => {
-                        Box::new(async_compression::futures::bufread::BzDecoder::new(fp))
+                        Box::new(BufReader::new(async_compression::futures::bufread::BzDecoder::new(fp)))
                     }
                     CompressionType::Xz => {
-                        Box::new(async_compression::futures::bufread::XzDecoder::new(fp))
+                        Box::new(BufReader::new(async_compression::futures::bufread::XzDecoder::new(fp)))
                     }
                     CompressionType::Detect => {
                         // moderate nightmares commence
@@ -85,13 +85,13 @@ fn open_rd<'p>(py: Python<'p>, fp: &'p PyAny, compression: CompressionType) -> P
                             CompressionType::Gzip => {
                                 let mut a = async_compression::futures::bufread::GzipDecoder::new(fp);
                                 a.multiple_members(true);
-                                Box::new(a)
+                                Box::new(BufReader::new(a))
                             }
                             CompressionType::Bzip2 => {
-                                Box::new(async_compression::futures::bufread::BzDecoder::new(fp))
+                                Box::new(BufReader::new(async_compression::futures::bufread::BzDecoder::new(fp)))
                             }
                             CompressionType::Xz => {
-                                Box::new(async_compression::futures::bufread::XzDecoder::new(fp))
+                                Box::new(BufReader::new(async_compression::futures::bufread::XzDecoder::new(fp)))
                             }
                             CompressionType::Detect => unreachable!(),
                         }
