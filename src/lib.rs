@@ -42,7 +42,9 @@ fn open_rd<'p>(py: Python<'p>, fp: &'p PyAny, compression: CompressionType) -> P
                 match compression {
                     CompressionType::Clear => Box::new(fp),
                     CompressionType::Gzip => {
-                        Box::new(async_compression::futures::bufread::GzipDecoder::new(fp))
+                        let mut a = async_compression::futures::bufread::GzipDecoder::new(fp);
+                        a.multiple_members(true);
+                        Box::new(a)
                     }
                     CompressionType::Bzip2 => {
                         Box::new(async_compression::futures::bufread::BzDecoder::new(fp))
@@ -81,7 +83,9 @@ fn open_rd<'p>(py: Python<'p>, fp: &'p PyAny, compression: CompressionType) -> P
                         match compression {
                             CompressionType::Clear => Box::new(fp),
                             CompressionType::Gzip => {
-                                Box::new(async_compression::futures::bufread::GzipDecoder::new(fp))
+                                let mut a = async_compression::futures::bufread::GzipDecoder::new(fp);
+                                a.multiple_members(true);
+                                Box::new(a)
                             }
                             CompressionType::Bzip2 => {
                                 Box::new(async_compression::futures::bufread::BzDecoder::new(fp))
