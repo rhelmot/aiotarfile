@@ -13,7 +13,7 @@ crate-type = ["cdylib"]
 [dependencies]
 async-compression = { version = "0.4.6", features = ["futures-io", "xz", "gzip", "bzip2"] }
 async-std = "1.12.0"
-async-tar = { git = "https://github.com/sky1e/async-tar", branch = "master" }
+async-tar = "0.5.1"
 pyo3 = "0.20.2"
 pyo3-asyncio = { version = "0.20.0", features = ["async-std-runtime"] }
 replace_with = "0.1.7"
